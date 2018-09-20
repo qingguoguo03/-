@@ -1,0 +1,58 @@
+9_20 submit数据分析过程：
+数据集：标准化过后的数据 原始数据共有66列（去掉了userid），其中最后一列是预测label
+train = pd.read_pickle('train_feature_method_zscore.pkl')
+test = pd.read_pickle('test_feature_method_zscore.pkl')
+
+思路：
+1.对类型数据做了onehot，这里有个bug就是'1_total_fee_neg_flag'只有一个取值，被进行了onehot因此也就只有一列，还好test数据
+在这一行也只有一个取值，不然有问题。
+2.onehot编码后的数据有92列，最后一行预测label没有进行onehot，因为xgboost不需要
+思考：据说xgboost树模型其实是不要人为的onehot的，处理连续型的数值，而这里我还是进行了onehot
+3.对数据进行稀疏矩阵转码的处理，这样xgboost可以跑得快一点
+4.对train数据做了3-7分
+5.xgboost参数设置：
+  params={
+      'booster':'gbtree',
+      'objective': 'multi:softmax', #多分类的问题
+      'num_class':15, # 类别数，与 multisoftmax 并用
+      'gamma':0.1,  # 用于控制是否后剪枝的参数,越大越保守，一般0.1、0.2这样子。
+      'max_depth':12, # 构建树的深度，越大越容易过拟合
+      'lambda':2,  # 控制模型复杂度的权重值的L2正则化项参数，参数越大，模型越不容易过拟合。
+      'subsample':0.7, # 随机采样训练样本
+      'colsample_bytree':0.7, # 生成树时进行的列采样
+      'min_child_weight':3, 
+      # 这个参数默认是 1，是每个叶子里面 h 的和至少是多少，对正负样本不均衡时的 0-1 分类而言
+      #，假设 h 在 0.01 附近，min_child_weight 为 1 意味着叶子节点中最少需要包含 100 个样本。
+      #这个参数非常影响结果，控制叶子节点中二阶导的和的最小值，该参数值越小，越容易 overfitting。 
+      'silent':0 ,#设置成1则没有运行信息输出，最好是设置为0.
+      'eta': 0.007, # 如同学习率
+      'seed':1000,
+      'nthread':7,# cpu 线程数
+      #'eval_metric': 'auc'
+  }
+  num_rounds = 5000 # 迭代次数
+ 
+模型最后跑了9个小时，进行预测的时候速度也很慢，不过validation和提交数据的fscore是差不多的，说明该参数还是有点泛化能力的。
+
+总结：
+取出了model的特征得分，发现：
+前33个特征表现还是不错的：
+(['gender_flag_0', 'is_mix_service_flag', 'last_month_traffic',
+       'gender_flag_1', 'traffic_diff_flag_1',
+       'pay_total_fee_diff_neg_flag', 'service_caller_avg',
+       'traffic_diff_flag_2', 'pay_freq', 'total_fee_neg_num',
+       'online_time', 'pay_num', 'local_service1', 'net_service_flag_2',
+       'local_service2', 'service_type_flag_0',
+       'month_traffic_local_diff_flag_1', 'pay_total_fee_diff',
+       'service1_caller_time', 'net_service_flag_0',
+       'service_type_flag_2', 'local_service1_neg_flag',
+       'month_traffic_local_diff_flag_2', 'local_service2_neg_flag',
+       'service1_service2_neg_flag', 'total_fee_gap',
+       'many_over_bill_flag', 'traffic_diff_flag_0',
+       'service_caller_diff_neg_flag', 'total_fee_gap_neg_flag',
+       'service1_service2', 'pay_avg', 'age',
+       'month_traffic_local_diff_flag_0'], 
+ 性别非常重要，而且差不都是特征工程提出来的新特征，注意，年龄似乎在这里不起作用，可以考虑把年龄变为类型变量试一试。
+ 
+
+       
